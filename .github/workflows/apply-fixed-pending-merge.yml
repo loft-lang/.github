@@ -1,0 +1,65 @@
+# Reusable: apply the `fixed-pending-merge` label for every issue a pushed
+# commit says it Fixes/Closes/Resolves, on a non-main branch.  Callers add a
+# 3-line stub (see README) that supplies the `push` trigger; this holds the
+# logic so it is defined ONCE for the whole org.  Mirror: strip-…on close.
+name: Apply fixed-pending-merge (reusable)
+
+on:
+  workflow_call:
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label closed-by issues as fixed-pending-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+          # Issue numbers this push's commits say they FIX.  A keyword is
+          # required: a bare `(#N)` reference is intentionally NOT matched (it
+          # does not auto-close on merge either — the lint job warns about it).
+          nums=$(jq -r '.commits[]?.message' "$GITHUB_EVENT_PATH" \
+            | grep -oiE '(close[sd]?|fix(es|ed)?|resolve[sd]?) +#[0-9]+' \
+            | grep -oE '[0-9]+' | sort -u || true)
+          for n in $nums; do
+            state=$(gh issue view "$n" --repo "$REPO" --json state -q .state 2>/dev/null) || continue
+            [ "$state" = "OPEN" ] || continue
+            if gh issue view "$n" --repo "$REPO" --json labels -q '.labels[].name' 2>/dev/null \
+                 | grep -qFx 'fixed-pending-merge'; then
+              continue
+            fi
+            gh issue edit "$n" --repo "$REPO" --add-label fixed-pending-merge
+            gh issue comment "$n" --repo "$REPO" --body \
+              "🔧 Fix pushed on branch \`$BRANCH\` (commit \`$SHA\`), not yet merged to \`main\` — labeled \`fixed-pending-merge\`. The \`Fixes #$n\` trailer closes this on merge; the author adds the verification / regression-test note."
+          done
+
+  lint-bare-refs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warn on bare issue refs that may want a Fixes trailer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          # A bare `(#N)` mention of an OPEN issue does NOT auto-close on merge
+          # and does NOT get labeled above.  Warn — never fail: cross-references
+          # are legitimate, so this is advisory only.
+          jq -r '.commits[]? | "\(.id) \(.message | gsub("\n"; " "))"' "$GITHUB_EVENT_PATH" \
+          | while read -r sha msg; do
+              fixed=$(printf '%s' "$msg" | grep -oiE '(close[sd]?|fix(es|ed)?|resolve[sd]?) +#[0-9]+' | grep -oE '[0-9]+' | sort -u || true)
+              refs=$(printf '%s' "$msg" | grep -oE '#[0-9]+' | grep -oE '[0-9]+' | sort -u || true)
+              for n in $refs; do
+                echo "$fixed" | grep -qx "$n" && continue
+                state=$(gh issue view "$n" --repo "$REPO" --json state -q .state 2>/dev/null) || continue
+                [ "$state" = "OPEN" ] || continue
+                echo "::warning::commit $sha mentions #$n as a bare reference, not 'Fixes #$n'. If this commit fixes it, use a Fixes/Closes trailer so it auto-closes on merge and gets the fixed-pending-merge label."
+              done
+            done

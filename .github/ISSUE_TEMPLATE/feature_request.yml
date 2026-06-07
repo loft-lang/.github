@@ -1,0 +1,16 @@
+name: Feature request
+description: A capability or enhancement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: The need
+      description: What problem does this solve, and who hits it?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: A sketch of the feature or API, if you have one.

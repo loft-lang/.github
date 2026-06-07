@@ -1,0 +1,30 @@
+name: Bug report
+description: A reproducible defect.
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is wrong, in one or two lines.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproducer
+      description: Minimal steps or code; expected vs observed.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, backend (interpret / native / wasm), version.
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: >-
+        What to do meanwhile, if anything. Maintainers label the issue
+        wa:clean / wa:partial / wa:none from this.
